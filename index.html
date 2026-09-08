@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>EVA 活動限界倒數計時器 - Active Time Remaining</title>
+
+    <!-- iOS PWA Mobile App Capabilities -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="EVA Timer">
+    <meta name="theme-color" content="#090a0f">
+
+    <!-- Web App Icon (EVA Dynamic SVG Favicon) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23000'/><text x='50' y='65' font-size='50' font-weight='900' fill='%23ffe600' text-anchor='middle' font-family='sans-serif'>EVA</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230d0e12'/><rect x='5' y='5' width='90' height='90' rx='18' fill='none' stroke='%23ffe600' stroke-width='4'/><text x='50' y='62' font-size='42' font-weight='900' fill='%23ffe600' text-anchor='middle' font-family='sans-serif'>05:00</text></svg>">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for Cyberpunk / LCD Digital typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css">
+
+    <style>
+        :root {
+            --eva-yellow: #ffe600;
+            --eva-yellow-glow: rgba(255, 230, 0, 0.6);
+            --eva-red: #ff1100;
+            --eva-dark-red: #8b0000;
+            --eva-bg: #090a0f;
+            --eva-panel-bg: #11131a;
+            --eva-border-green: #2bf076;
+            --eva-cyan: #00f0ff;
+        }
+
+        /* Prevent unwanted mobile scrolling and adapt to Safe Area Inserts */
+        body {
+            background-color: var(--eva-bg);
+            color: var(--eva-yellow);
+            font-family: 'Noto Sans JP', 'Share Tech Mono', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow-x: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            padding-top: max(env(safe-area-inset-top), 6px);
+            padding-bottom: max(env(safe-area-inset-bottom), 6px);
+            padding-left: max(env(safe-area-inset-left), 8px);
+            padding-right: max(env(safe-area-inset-right), 8px);
+            background-image: 
+                radial-gradient(circle at 50% 50%, #1a1d26 0%, #08090d 100%),
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 100%, 100% 4px, 6px 100%;
+        }
+
+        /* Digital 7-Segment Font style */
+        .digital-font {
+            font-family: 'Orbitron', 'Share Tech Mono', monospace;
+            letter-spacing: 0.02em;
+            transition: color 0.2s ease, text-shadow 0.2s ease;
+        }
+
+        /* Hazard stripes for INTERNAL / EXTERNAL boxes */
+        .hazard-stripes {
+            background: repeating-linear-gradient(
+                -45deg,
+                #d00000,
+                #d00000 18px,
+                #0a0a0c 18px,
+                #0a0a0c 36px
+            );
+        }
+
+        .eva-panel {
+            background: #0d0e12;
+            border: 2px solid #333845;
+            position: relative;
+        }
+
+        /* Dynamic transition for top slanted bar overlay */
+        .top-gradient-bar {
+            background: linear-gradient(to right, #ffe600 0%, #2bf076 50%, #ff1100 100%);
+            transition: opacity 0.3s linear;
+        }
+
+        /* Pulse animations when critical */
+        @keyframes eva-flash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+
+        .critical-flash {
+            animation: eva-flash 0.5s infinite alternate;
+        }
+
+        .active-power-internal {
+            background-color: rgba(255, 17, 0, 0.2);
+            border-color: var(--eva-red) !important;
+        }
+
+        .active-power-external {
+            background-color: rgba(43, 240, 118, 0.15);
+            border-color: var(--eva-border-green) !important;
+        }
+
+        /* Speed mode active highlight */
+        .mode-btn.active-mode {
+            background-color: #ffe600 !important;
+            color: #000 !important;
+            box-shadow: 0 0 12px #ffe600;
+        }
+
+        /* Custom Scrollbar for setting modal */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0a0a0c;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--eva-yellow);
+        }
+
+        /* iPhone Landscape Height Optimization (< 500px height) */
+        @media (max-height: 500px) {
+            body {
+                padding-top: env(safe-area-inset-top, 2px);
+                padding-bottom: env(safe-area-inset-bottom, 2px);
+            }
+            header {
+                margin-bottom: 2px !important;
+            }
+            .main-frame-padding {
+                padding: 6px !important;
+            }
+            .top-bar-height {
+                height: 3px !important;
+            }
+            .panel-box-height {
+                height: 3rem !important; /* h-12 in tailwind */
+            }
+            .panel-text-main {
+                font-size: 1.25rem !important; /* text-xl */
+            }
+            .panel-text-sub {
+                font-size: 0.65rem !important;
+            }
+            .timer-digits {
+                font-size: 8vh !important;
+            }
+            .timer-container {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0.25rem !important;
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+            }
+            .speed-btn-padding {
+                padding-top: 2px !important;
+                padding-bottom: 2px !important;
+                font-size: 0.7rem !important;
+            }
+            .bottom-controls-margin {
+                margin-top: 4px !important;
+                padding-top: 4px !important;
+            }
+        }
+
+        /* Mobile layout optimization to preserve side-by-side HUD on iPhone */
+        @media (max-width: 640px) {
+            .mobile-panel-box {
+                height: 3.2rem !important;
+                padding: 0.35rem !important;
+            }
+            .mobile-panel-title {
+                font-size: 1.1rem !important;
+            }
+            .mobile-panel-sub {
+                font-size: 0.55rem !important;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between items-center p-1 sm:p-3 md:p-6 text-yellow-400 select-none">
+
+    <!-- HEADER NAVIGATION -->
+    <header class="w-full max-w-6xl flex justify-between items-center mb-1 sm:mb-2 px-1 sm:px-2 gap-1.5 flex-wrap">
+        <div class="flex items-center space-x-1.5 sm:space-x-2">
+            <span class="inline-block w-2 h-2 sm:w-3 sm:h-3 bg-red-600 rounded-full animate-ping"></span>
+            <span class="text-[10px] sm:text-xs md:text-sm font-bold tracking-widest text-red-500 uppercase truncate">MAGI-01 SYSTEM</span>
+        </div>
+        
+        <!-- Mode Switcher: CLOCK vs TIMER -->
+        <div class="flex items-center space-x-1 sm:space-x-2 bg-gray-900 border border-yellow-500/50 p-0.5 sm:p-1 rounded-lg">
+            <button id="btnModeClock" onclick="switchAppMode('CLOCK')" class="px-2 sm:px-3 py-0.5 sm:py-1 text-[11px] sm:text-xs font-black rounded transition-all bg-yellow-400 text-black shadow-md whitespace-nowrap">
+                <i class="fa-solid fa-clock mr-0.5 sm:mr-1"></i> 時鐘
+            </button>
+            <button id="btnModeTimer" onclick="switchAppMode('TIMER')" class="px-2 sm:px-3 py-0.5 sm:py-1 text-[11px] sm:text-xs font-black rounded transition-all text-yellow-400 hover:bg-yellow-500/20 whitespace-nowrap">
+                <i class="fa-solid fa-hourglass-half mr-0.5 sm:mr-1"></i> 倒數
+            </button>
+        </div>
+
+        <div class="flex items-center space-x-1 sm:space-x-2">
+            <!-- PWA Guide button for iPhone -->
+            <button onclick="toggleIPhoneModal()" class="px-2 sm:px-3 py-0.5 sm:py-1 bg-gray-900 border border-cyan-400/80 hover:bg-cyan-950 text-cyan-300 font-bold text-[11px] sm:text-xs tracking-wider transition-all rounded shadow flex items-center gap-1">
+                <i class="fa-brands fa-apple text-xs sm:text-sm"></i> <span class="hidden sm:inline">iOS App</span>
+            </button>
+            <button id="btnToggleControls" onclick="toggleBottomControls()" class="px-2 sm:px-3 py-0.5 sm:py-1 bg-gray-900 border border-yellow-500/50 hover:bg-yellow-500/20 text-yellow-400 font-bold text-[11px] sm:text-xs tracking-wider uppercase transition-all rounded shadow flex items-center gap-1" title="顯示/隱藏底部控制列">
+                <i class="fa-solid fa-eye-slash"></i> <span class="hidden sm:inline">隱藏列</span>
+            </button>
+            <button id="btnToggleSettings" onclick="toggleSettingsModal()" class="px-2 sm:px-3 py-0.5 sm:py-1 bg-yellow-500 hover:bg-yellow-400 text-black font-black text-[11px] sm:text-xs tracking-wider uppercase transition-all rounded shadow-lg flex items-center gap-1">
+                <i class="fa-solid fa-gear"></i> 設定
+            </button>
+        </div>
+    </header>
+
+    <main class="w-full max-w-6xl relative my-auto">
+        
+        <!-- Outer Frame with Dynamic Color Transition -->
+        <div id="outerFrame" class="main-frame-padding relative bg-black p-1.5 sm:p-4 md:p-6 border-2 sm:border-4 border-yellow-400 rounded-lg shadow-2xl overflow-hidden transition-all duration-300">
+            
+            <!-- Top Slanted Bar: Rainbow Base -->
+            <div id="topGradientBar" class="top-bar-height absolute top-0 left-0 right-0 h-2 sm:h-3 md:h-4 top-gradient-bar opacity-90"></div>
+            <!-- Top Slanted Bar: Dynamic Red Overlay (fades in as time runs out) -->
+            <div id="topBarRedOverlay" class="top-bar-height absolute top-0 left-0 right-0 h-2 sm:h-3 md:h-4 bg-red-600 opacity-0 transition-opacity duration-300 pointer-events-none"></div>
+
+            <!-- Main Layout Grid: Maintained Side-by-Side on Mobile (col-span-7 / col-span-5) -->
+            <div class="grid grid-cols-12 gap-1.5 sm:gap-4 mt-0.5 sm:mt-2">
+
+                <!-- LEFT SIDE: TIMER AREA -->
+                <div class="col-span-7 sm:col-span-8 flex flex-col justify-between bg-black/80 p-1 sm:p-4 rounded border border-yellow-500/40 relative">
+                    
+                    <!-- Top Labels -->
+                    <div class="flex items-baseline justify-between border-b border-yellow-500/30 pb-0.5 mb-1 sm:mb-2">
+                        <div class="flex items-baseline space-x-1 sm:space-x-2 truncate mr-1">
+                            <span id="labelJapanese" class="text-[9px] sm:text-sm text-yellow-500 font-extrabold tracking-tighter">現在時刻</span>
+                            <span id="labelEnglish" class="text-[7px] sm:text-xs font-mono tracking-wider text-yellow-300 font-bold hidden xs:inline">SYSTEM REAL-TIME CLOCK</span>
+                        </div>
+                        <div class="text-[8px] sm:text-xs text-red-500 font-mono tracking-widest shrink-0">STATUS: <span id="statusLabel" class="text-yellow-400">CLOCK ONLINE</span></div>
+                    </div>
+
+                    <!-- Main Giant Digital Display -->
+                    <div class="timer-container relative flex items-center justify-center pt-1.5 sm:pt-6 pb-0.5 my-0.5 sm:my-3">
+                        <!-- Small "あと / 現在" Kanji badge positioned elevated -->
+                        <span id="kanjiAt" class="absolute left-0 top-0 text-yellow-400 font-black text-[9px] sm:text-base md:text-xl border border-yellow-400 px-0.5 py-0.2 leading-none transition-all duration-300">現在</span>
+
+                        <!-- Timer Digits fitted seamlessly for iPhone Screens -->
+                        <div class="flex items-baseline justify-center w-full px-0.5 overflow-hidden">
+                            <span id="timerDisplay" class="digital-font timer-digits text-[5.8vw] xs:text-[6.5vw] sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl text-yellow-400 font-black tracking-tighter leading-none whitespace-nowrap">
+                                00:00:00:00
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Speed Selector Buttons -->
+                    <div id="speedControlsRow" class="grid grid-cols-4 gap-0.5 sm:gap-2 mt-1 sm:mt-4 pt-1 sm:pt-2 border-t border-yellow-500/30 opacity-50">
+                        <button onclick="setSpeedMode('STOP')" id="btn-STOP" class="mode-btn speed-btn-padding py-0.5 sm:py-2 text-center border sm:border-2 border-yellow-400 bg-black text-yellow-400 font-black text-[9px] sm:text-sm md:text-base hover:bg-yellow-400 hover:text-black transition-all">
+                            STOP
+                        </button>
+                        <button onclick="setSpeedMode('SLOW')" id="btn-SLOW" class="mode-btn speed-btn-padding py-0.5 sm:py-2 text-center border sm:border-2 border-yellow-400 bg-black text-yellow-400 font-black text-[9px] sm:text-sm md:text-base hover:bg-yellow-400 hover:text-black transition-all">
+                            SLOW
+                        </button>
+                        <button onclick="setSpeedMode('NORMAL')" id="btn-NORMAL" class="mode-btn speed-btn-padding py-0.5 sm:py-2 text-center border sm:border-2 border-yellow-400 bg-black text-yellow-400 font-black text-[9px] sm:text-sm md:text-base hover:bg-yellow-400 hover:text-black transition-all active-mode">
+                            NORMAL
+                        </button>
+                        <button onclick="setSpeedMode('RACING')" id="btn-RACING" class="mode-btn speed-btn-padding py-0.5 sm:py-2 text-center border sm:border-2 border-yellow-400 bg-black text-yellow-400 font-black text-[9px] sm:text-sm md:text-base hover:bg-yellow-400 hover:text-black transition-all relative">
+                            RACING
+                            <span class="absolute bottom-0 left-0 right-0 h-0.5 sm:h-1 bg-red-600"></span>
+                        </button>
+                    </div>
+
+                </div>
+
+                <!-- RIGHT SIDE: STATUS PANELS (Stacked vertically next to clock) -->
+                <div class="col-span-5 sm:col-span-4 flex flex-col justify-between gap-1 sm:gap-3">
+                    
+                    <!-- BOX 1: 內部 / INTERNAL PANEL -->
+                    <div id="panelInternal" class="eva-panel mobile-panel-box active-power-internal p-1 sm:p-3 rounded flex justify-between items-center relative overflow-hidden h-14 sm:h-24 lg:h-28 border-2 border-red-600 transition-all">
+                        <div class="z-10 flex flex-col justify-center">
+                            <h2 class="mobile-panel-title text-base sm:text-4xl md:text-5xl font-black text-yellow-400 tracking-wider leading-none">內部</h2>
+                            <p class="mobile-panel-sub text-[8px] sm:text-base md:text-xl font-mono text-yellow-300 font-extrabold tracking-widest mt-0.5">INTERNAL</p>
+                        </div>
+                        <div class="w-1/3 sm:w-2/5 h-full absolute right-0 top-0 bottom-0 hazard-stripes opacity-90 border-l-2 border-red-600"></div>
+                    </div>
+
+                    <!-- BOX 2: 主電源供給システム -->
+                    <div id="panelMainSupply" class="eva-panel mobile-panel-box p-1 sm:p-3 rounded flex flex-col justify-center items-center text-center relative border-2 border-yellow-400 bg-black/90 h-14 sm:h-24 lg:h-28">
+                        <div class="mobile-panel-title text-[9px] sm:text-lg md:text-xl font-black tracking-tighter leading-tight text-yellow-400 break-keep">
+                            主電源供給システム
+                        </div>
+                        <div class="mobile-panel-sub text-[7px] sm:text-xs md:text-sm font-mono text-yellow-300 font-bold tracking-wider mt-0.5">
+                            MAIN SUPPLY
+                        </div>
+                        <div class="mt-0.5 sm:mt-1 flex items-center space-x-1 sm:space-x-2">
+                            <span id="powerStatusDot" class="w-1.5 h-1.5 sm:w-3 sm:h-3 rounded-full bg-red-600 animate-pulse"></span>
+                            <span id="powerStatusText" class="text-[7px] sm:text-xs font-mono text-red-500 font-bold">OFFLINE</span>
+                        </div>
+                    </div>
+
+                    <!-- BOX 3: 外部 / EXTERNAL PANEL -->
+                    <div id="panelExternal" class="eva-panel mobile-panel-box p-1 sm:p-3 rounded flex justify-between items-center relative overflow-hidden h-14 sm:h-24 lg:h-28 border-2 border-yellow-500/40 opacity-50 transition-all">
+                        <div class="z-10 flex flex-col justify-center">
+                            <h2 class="mobile-panel-title text-base sm:text-4xl md:text-5xl font-black text-yellow-400 tracking-wider leading-none">外部</h2>
+                            <p class="mobile-panel-sub text-[8px] sm:text-base md:text-xl font-mono text-yellow-300 font-extrabold tracking-widest mt-0.5">EXTERNAL</p>
+                        </div>
+                        <div class="w-1/3 sm:w-2/5 h-full absolute right-0 top-0 bottom-0 hazard-stripes opacity-80 border-l-2 border-yellow-500"></div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div id="bottomControlRow" class="bottom-controls-margin mt-2 sm:mt-4 pt-1.5 sm:pt-3 border-t-2 border-yellow-500/30 flex flex-wrap justify-between items-center gap-1.5 sm:gap-2 transition-all duration-300">
+                <div class="flex space-x-1 sm:space-x-2 w-full sm:w-auto justify-between sm:justify-start">
+                    <button id="btnStart" onclick="startTimer()" class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 bg-yellow-400 hover:bg-yellow-300 text-black font-black text-xs sm:text-sm tracking-wider uppercase rounded shadow-lg transition-all whitespace-nowrap">
+                        <i class="fa-solid fa-play mr-1"></i> 開始
+                    </button>
+                    <button id="btnPause" onclick="pauseTimer()" class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 bg-red-600 hover:bg-red-500 text-white font-black text-xs sm:text-sm tracking-wider uppercase rounded shadow-lg transition-all whitespace-nowrap">
+                        <i class="fa-solid fa-pause mr-1"></i> 暫停
+                    </button>
+                    <button id="btnReset" onclick="resetTimer()" class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-yellow-400 border border-yellow-400 font-bold text-xs sm:text-sm tracking-wider uppercase rounded transition-all whitespace-nowrap">
+                        <i class="fa-solid fa-rotate-left mr-1"></i> 重置
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between sm:justify-end w-full sm:w-auto space-x-2 text-xs font-mono text-yellow-300">
+                    <button onclick="togglePowerSupply()" class="px-2 py-1 sm:px-2.5 sm:py-1.5 border border-cyan-400 text-cyan-300 hover:bg-cyan-950 font-bold rounded flex items-center gap-1 text-[11px] sm:text-xs whitespace-nowrap">
+                        <i class="fa-solid fa-plug"></i> 電源: <span id="powerModeBtnText">外部電源</span>
+                    </button>
+                    <div id="bgmIndicator" class="flex items-center gap-1.5 bg-black/60 px-2 py-1 border border-yellow-500/40 rounded">
+                        <i id="bgmIcon" class="fa-solid fa-music text-yellow-400 text-xs"></i>
+                        <span id="bgmStatus" class="truncate max-w-[100px] sm:max-w-[160px] text-[10px] sm:text-xs">BGM: 就緒</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- iPhone PWA Installation Guide Modal -->
+    <div id="iphoneGuideModal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-gray-950 border-2 border-cyan-400 w-full max-w-md rounded-xl p-5 text-yellow-400 shadow-2xl relative">
+            <div class="flex justify-between items-center border-b border-cyan-500/40 pb-3 mb-4">
+                <h3 class="text-lg font-black tracking-wider text-cyan-300 flex items-center gap-2">
+                    <i class="fa-brands fa-apple text-xl"></i> iPhone App 安裝教學
+                </h3>
+                <button onclick="toggleIPhoneModal()" class="text-cyan-400 hover:text-white text-xl font-bold px-2">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 text-xs sm:text-sm text-gray-200">
+                <p class="text-yellow-400 font-bold">只需三個簡單步驟，即可在 iPhone 上像原生 App 般全螢幕獨立運行：</p>
+
+                <div class="flex items-start gap-3 bg-black/60 p-3 rounded border border-gray-800">
+                    <span class="bg-cyan-500 text-black font-black w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs">1</span>
+                    <div>
+                        <span class="font-bold text-white">使用 Safari 瀏覽器</span>
+                        <p class="text-gray-400 text-xs mt-0.5">請確認目前使用的是 iPhone 內建的 <b>Safari</b> 瀏覽器開啟此網頁。</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-3 bg-black/60 p-3 rounded border border-gray-800">
+                    <span class="bg-cyan-500 text-black font-black w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs">2</span>
+                    <div>
+                        <span class="font-bold text-white">點擊「分享」按鈕</span>
+                        <p class="text-gray-400 text-xs mt-0.5">點選 Safari 底部中間的分享圖示 <i class="fa-solid fa-share-from-square text-cyan-300 mx-1"></i> (方框與向上箭頭)。</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start gap-3 bg-black/60 p-3 rounded border border-gray-800">
+                    <span class="bg-cyan-500 text-black font-black w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs">3</span>
+                    <div>
+                        <span class="font-bold text-white">選擇「加至主畫面」</span>
+                        <p class="text-gray-400 text-xs mt-0.5">向下滑動並點選 <i class="fa-regular fa-square-plus text-yellow-400 mx-1"></i><b>「加至主畫面」(Add to Home Screen)</b>，點右上角新增即完成！</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-5 pt-3 border-t border-cyan-500/30 flex justify-end">
+                <button onclick="toggleIPhoneModal()" class="w-full py-2 bg-cyan-400 text-black font-black text-xs sm:text-sm rounded hover:bg-cyan-300 transition-all shadow-lg uppercase">
+                    知道了 (GOT IT)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="bg-gray-950 border-2 border-yellow-400 w-full max-w-xl rounded-lg p-3 sm:p-5 text-yellow-400 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+            
+            <div class="flex justify-between items-center border-b border-yellow-500/40 pb-2 sm:pb-3 mb-3">
+                <h3 class="text-base sm:text-xl font-black tracking-wider text-yellow-400 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders"></i> 系統控制與 音訊設定
+                </h3>
+                <button onclick="toggleSettingsModal()" class="text-yellow-400 hover:text-white text-xl font-bold px-2">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 sm:space-y-4 text-xs sm:text-sm">
+                
+                <!-- 1. Countdown Time Config -->
+                <div class="bg-black/60 p-2.5 sm:p-3 border border-yellow-500/30 rounded">
+                    <label class="block font-bold text-yellow-300 mb-2">1. 倒數時間設定 (分鐘):</label>
+                    <div class="flex gap-2 items-center flex-wrap">
+                        <input type="number" id="inputMinutes" min="1" max="999" value="5" class="w-20 bg-gray-900 border border-yellow-400 text-yellow-300 px-3 py-1 font-bold text-base rounded text-center focus:outline-none focus:ring-2 focus:ring-yellow-400">
+                        <span class="font-bold text-yellow-400">分鐘</span>
+                        <div class="flex gap-1 ml-auto">
+                            <button onclick="quickSetTime(1)" class="px-2 py-1 bg-gray-800 hover:bg-yellow-500 hover:text-black border border-yellow-400 text-xs font-bold rounded">1分</button>
+                            <button onclick="quickSetTime(3)" class="px-2 py-1 bg-gray-800 hover:bg-yellow-500 hover:text-black border border-yellow-400 text-xs font-bold rounded">3分</button>
+                            <button onclick="quickSetTime(5)" class="px-2 py-1 bg-gray-800 hover:bg-yellow-500 hover:text-black border border-yellow-400 text-xs font-bold rounded">5分</button>
+                            <button onclick="quickSetTime(10)" class="px-2 py-1 bg-gray-800 hover:bg-yellow-500 hover:text-black border border-yellow-400 text-xs font-bold rounded">10分</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. BGM Source Selector -->
+                <div class="bg-black/60 p-2.5 sm:p-3 border border-yellow-500/30 rounded space-y-3">
+                    <label class="block font-bold text-yellow-300 mb-1">
+                        2. 背景音樂 (BGM) 來源選擇 (倒數期間播放):
+                    </label>
+                    
+                    <!-- BGM Source Radio Tabs -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center font-bold">
+                        <label class="cursor-pointer border border-yellow-500/50 p-2 rounded bg-gray-900 has-[:checked]:border-yellow-400 has-[:checked]:bg-yellow-500/20 transition-all">
+                            <input type="radio" name="bgmType" value="NONE" onchange="switchBgmSource('NONE')" class="hidden">
+                            <i class="fa-solid fa-volume-xmark block text-base mb-1 text-gray-400"></i>
+                            <span class="text-[11px]">無 (靜音)</span>
+                        </label>
+                        <label class="cursor-pointer border border-yellow-500/50 p-2 rounded bg-gray-900 has-[:checked]:border-yellow-400 has-[:checked]:bg-yellow-500/20 transition-all">
+                            <input type="radio" name="bgmType" value="SYNTH" checked onchange="switchBgmSource('SYNTH')" class="hidden">
+                            <i class="fa-solid fa-drum block text-base mb-1 text-yellow-400"></i>
+                            <span class="text-[11px]">EVA 內建節奏</span>
+                        </label>
+                        <label class="cursor-pointer border border-yellow-500/50 p-2 rounded bg-gray-900 has-[:checked]:border-yellow-400 has-[:checked]:bg-yellow-500/20 transition-all">
+                            <input type="radio" name="bgmType" value="FILE" onchange="switchBgmSource('FILE')" class="hidden">
+                            <i class="fa-solid fa-file-audio block text-base mb-1 text-yellow-400"></i>
+                            <span class="text-[11px]">上傳 MP3 檔案</span>
+                        </label>
+                        <label class="cursor-pointer border border-yellow-500/50 p-2 rounded bg-gray-900 has-[:checked]:border-yellow-400 has-[:checked]:bg-yellow-500/20 transition-all">
+                            <input type="radio" name="bgmType" value="YOUTUBE" onchange="switchBgmSource('YOUTUBE')" class="hidden">
+                            <i class="fa-brands fa-youtube block text-base mb-1 text-red-500"></i>
+                            <span class="text-[11px]">YouTube 網址</span>
+                        </label>
+                    </div>
+
+                    <!-- Panel None -->
+                    <div id="bgmPanelNone" class="bg-gray-900/80 p-2.5 rounded border border-gray-800 text-xs text-gray-400 hidden">
+                        <i class="fa-solid fa-circle-info mr-1 text-yellow-400"></i>倒數期間將不播放任何背景音樂，僅在倒數結束時播放警報音效。
+                    </div>
+
+                    <!-- Panel A: Built-in Synth Details -->
+                    <div id="bgmPanelSynth" class="bg-gray-900/80 p-2.5 rounded border border-gray-800 text-xs text-gray-300">
+                        <span class="text-yellow-400 font-bold block mb-1"><i class="fa-solid fa-bolt mr-1"></i>Web Audio 內建緊急進攻節奏</span>
+                        無需聯網或選擇檔案，由系統利用聲學合成器直接即時演算 EVA 經典打擊戰鬥律動！
+                    </div>
+
+                    <!-- Panel B: Local File Input -->
+                    <div id="bgmPanelFile" class="bg-gray-900/80 p-2.5 rounded border border-gray-800 space-y-2 hidden">
+                        <span class="text-xs text-yellow-400 font-bold block">選擇 MP3 音訊檔案:</span>
+                        <input type="file" id="audioFileInput" accept="audio/*" onchange="handleFileUpload(event)" class="block w-full text-xs text-yellow-300 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-bold file:bg-yellow-500 file:text-black hover:file:bg-yellow-400 cursor-pointer">
+                        <span id="bgmFileName" class="text-[11px] text-gray-400 block truncate"><i class="fa-solid fa-circle-info mr-1"></i>尚未選擇檔案</span>
+                    </div>
+
+                    <!-- Panel C: YouTube Input -->
+                    <div id="bgmPanelYoutube" class="bg-gray-900/80 p-2.5 rounded border border-gray-800 space-y-2 hidden">
+                        <span class="text-xs text-red-400 font-bold block"><i class="fa-brands fa-youtube mr-1"></i>輸入 YouTube 影片網址 (BGM):</span>
+                        <div class="flex gap-2">
+                            <input type="text" id="ytUrlInput" placeholder="https://www.youtube.com/watch?v=..." class="w-full bg-black border border-yellow-500/40 px-2 py-1 text-xs text-yellow-300 rounded focus:outline-none focus:border-yellow-400">
+                            <button onclick="loadYoutubeUrl('BGM')" class="px-3 py-1 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded shrink-0">載入</button>
+                        </div>
+                        <span id="ytStatus" class="text-[11px] text-gray-400 block truncate">等待輸入網址...</span>
+                    </div>
+
+                    <!-- Common Controls: Volume and Play Test -->
+                    <div class="pt-2 border-t border-gray-800 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
+                        <button id="btnPlayBgm" onclick="toggleBGMPlay()" class="px-3 py-1.5 bg-yellow-500 text-black font-bold text-xs rounded hover:bg-yellow-400 shrink-0 transition-all">
+                            <i class="fa-solid fa-play mr-1"></i> 測試播放 BGM
+                        </button>
+                        <div class="flex items-center space-x-2 w-full sm:w-1/2">
+                            <i class="fa-solid fa-volume-high text-xs text-yellow-400"></i>
+                            <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.7" onchange="adjustVolume(this.value)" oninput="adjustVolume(this.value)" class="w-full accent-yellow-400 cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Alarm SFX Section (Independent - With YouTube Support) -->
+                <div class="bg-black/60 p-2.5 sm:p-3 border border-red-500/40 rounded space-y-3">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <label class="font-bold text-red-400 text-xs sm:text-sm flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-yellow-400"></i> 3. 倒數結束警報音效 (倒數歸零時播放):
+                        </label>
+                        <button id="btnTestAlarm" onclick="toggleAlarmTest()" class="px-3 py-1.5 bg-red-900/80 hover:bg-red-800 border border-red-500 text-red-200 font-bold text-xs rounded shrink-0 transition-all flex items-center gap-1.5 shadow">
+                            <i class="fa-solid fa-bell"></i> 試聽警報
+                        </button>
+                    </div>
+
+                    <!-- Alarm Audio Source Radio Tabs -->
+                    <div class="grid grid-cols-3 gap-2 text-center font-bold">
+                        <label class="cursor-pointer border border-red-500/50 p-1.5 rounded bg-gray-900 has-[:checked]:border-red-500 has-[:checked]:bg-red-500/20 transition-all">
+                            <input type="radio" name="alarmType" value="SYNTH" checked onchange="switchAlarmSource('SYNTH')" class="hidden">
+                            <i class="fa-solid fa-bell-schlage block text-xs mb-0.5 text-red-400"></i>
+                            <span class="text-[10px]">預設警報音</span>
+                        </label>
+                        <label class="cursor-pointer border border-red-500/50 p-1.5 rounded bg-gray-900 has-[:checked]:border-red-500 has-[:checked]:bg-red-500/20 transition-all">
+                            <input type="radio" name="alarmType" value="FILE" onchange="switchAlarmSource('FILE')" class="hidden">
+                            <i class="fa-solid fa-file-audio block text-xs mb-0.5 text-red-400"></i>
+                            <span class="text-[10px]">上傳 MP3</span>
+                        </label>
+                        <label class="cursor-pointer border border-red-500/50 p-1.5 rounded bg-gray-900 has-[:checked]:border-red-500 has-[:checked]:bg-red-500/20 transition-all">
+                            <input type="radio" name="alarmType" value="YOUTUBE" onchange="switchAlarmSource('YOUTUBE')" class="hidden">
+                            <i class="fa-brands fa-youtube block text-xs mb-0.5 text-red-500"></i>
+                            <span class="text-[10px]">YouTube 網址</span>
+                        </label>
+                    </div>
+
+                    <!-- Alarm Source Detail Panels -->
+                    <div id="alarmPanelSynth" class="bg-gray-900/80 p-2 rounded border border-gray-800 text-[11px] text-gray-300">
+                        <i class="fa-solid fa-circle-info mr-1 text-yellow-400"></i>預設音效：EVA 內建急促嗶嗶警報聲
+                    </div>
+
+                    <div id="alarmPanelFile" class="bg-gray-900/80 p-2 rounded border border-gray-800 space-y-1.5 hidden">
+                        <input type="file" id="alarmFileInput" accept="audio/*" onchange="handleAlarmUpload(event)" class="block w-full text-xs text-yellow-300 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-bold file:bg-red-600 file:text-white hover:file:bg-red-500 cursor-pointer">
+                        <span id="alarmFileName" class="text-[11px] text-gray-400 block truncate">尚未選擇警報檔案</span>
+                    </div>
+
+                    <div id="alarmPanelYoutube" class="bg-gray-900/80 p-2 rounded border border-gray-800 space-y-1.5 hidden">
+                        <span class="text-xs text-red-400 font-bold block"><i class="fa-brands fa-youtube mr-1"></i>輸入警報音效 YouTube 網址:</span>
+                        <div class="flex gap-2">
+                            <input type="text" id="ytAlarmUrlInput" placeholder="https://www.youtube.com/watch?v=..." class="w-full bg-black border border-red-500/40 px-2 py-1 text-xs text-yellow-300 rounded focus:outline-none focus:border-red-400">
+                            <button onclick="loadYoutubeUrl('ALARM')" class="px-3 py-1 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded shrink-0">載入</button>
+                        </div>
+                        <span id="ytAlarmStatus" class="text-[11px] text-gray-400 block truncate">等待輸入網址...</span>
+                    </div>
+                </div>
+
+                <!-- 4. Sound Effects & Auto-start toggle -->
+                <div class="flex justify-between items-center text-xs font-bold text-yellow-300 px-1 flex-wrap gap-2">
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="chkAutoBgm" checked class="accent-yellow-400 w-4 h-4">
+                        <span>開始倒數時自動播放 BGM</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="chkSoundFx" checked class="accent-yellow-400 w-4 h-4">
+                        <span>按鍵音效 / 警報音</span>
+                    </label>
+                </div>
+
+                <div class="bg-black/60 p-2.5 sm:p-3 border border-yellow-500/30 rounded flex justify-between items-center text-xs font-bold text-yellow-300">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-eye"></i> 顯示底部操作控制列
+                    </span>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" id="chkShowControls" checked onchange="toggleBottomControls()" class="accent-yellow-400 w-4 h-4">
+                        <span>顯示</span>
+                    </label>
+                </div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="mt-4 pt-3 border-t border-yellow-500/40 flex justify-end">
+                <button onclick="saveAndCloseSettings()" class="px-6 py-2 bg-yellow-400 text-black font-black text-xs sm:text-sm rounded hover:bg-yellow-300 transition-all shadow-lg">
+                    確認並儲存 (SAVE)
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Hidden HTML5 Audio Elements for Local MP3 Files & YouTube Player Containers -->
+    <audio id="bgmAudio" loop preload="auto"></audio>
+    <audio id="alarmAudio" preload="auto"></audio>
+    
+    <div id="ytPlayerContainer" class="hidden absolute top-0 left-0 w-1 h-1 overflow-hidden pointer-events-none opacity-0">
+        <div id="ytPlayer"></div>
+        <div id="ytAlarmPlayer"></div>
+    </div>
+
+    <script>
+        // --- APP STATE & TIMERS ---
+        let appMode = 'CLOCK'; // 'CLOCK' or 'TIMER'
+        let clockInterval = null;
+
+        let totalCentiseconds = 5 * 60 * 100; // Default 5 mins
+        let remainingCentiseconds = totalCentiseconds;
+        let timerInterval = null;
+        let isRunning = false;
+        let speedMultiplier = 1; 
+        let externalPower = false; 
+
+        // --- BGM & ALARM AUDIO ENGINE STATE ---
+        const bgmAudio = document.getElementById('bgmAudio');
+        const alarmAudio = document.getElementById('alarmAudio');
+        let audioCtx = null;
+        let isBgmPlaying = false;
+        let isAlarmTesting = false;
+        let bgmVolume = 0.7;
+        
+        let bgmSourceType = 'SYNTH'; // 'NONE', 'SYNTH', 'FILE', 'YOUTUBE'
+        let alarmSourceType = 'SYNTH'; // 'SYNTH', 'FILE', 'YOUTUBE'
+
+        let synthInterval = null;
+        let synthStep = 0;
+        
+        let ytPlayer = null;
+        let ytAlarmPlayer = null;
+        let isYtReady = false;
+        let isYtAlarmReady = false;
+
+        let loadedYtVideoId = null;
+        let loadedYtAlarmVideoId = null;
+
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Load YouTube IFrame API dynamically
+        (function loadYtApi() {
+            const tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            const firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        })();
+
+        function onYouTubeIframeAPIReady() {
+            // Player 1 for BGM
+            ytPlayer = new YT.Player('ytPlayer', {
+                height: '100',
+                width: '100',
+                playerVars: { 'playsinline': 1, 'controls': 0, 'disablekb': 1 },
+                events: {
+                    'onReady': function() {
+                        isYtReady = true;
+                        ytPlayer.setVolume(bgmVolume * 100);
+                    },
+                    'onStateChange': function(event) {
+                        if (event.data === YT.PlayerState.PLAYING) {
+                            isBgmPlaying = true;
+                            updateBgmStatusUI(true);
+                        } else if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) {
+                            isBgmPlaying = false;
+                            updateBgmStatusUI(false);
+                        }
+                    }
+                }
+            });
+
+            // Player 2 for Alarm
+            ytAlarmPlayer = new YT.Player('ytAlarmPlayer', {
+                height: '100',
+                width: '100',
+                playerVars: { 'playsinline': 1, 'controls': 0, 'disablekb': 1 },
+                events: {
+                    'onReady': function() {
+                        isYtAlarmReady = true;
+                        ytAlarmPlayer.setVolume(bgmVolume * 100);
+                    },
+                    'onStateChange': function(event) {
+                        if (event.data === YT.PlayerState.ENDED && isAlarmTesting) {
+                            stopAlarmTest();
+                        }
+                    }
+                }
+            });
+        }
+
+        function switchBgmSource(type) {
+            bgmSourceType = type;
+            stopAllBGM();
+
+            const panelNone = document.getElementById('bgmPanelNone');
+            if (panelNone) panelNone.classList.toggle('hidden', type !== 'NONE');
+            document.getElementById('bgmPanelSynth').classList.toggle('hidden', type !== 'SYNTH');
+            document.getElementById('bgmPanelFile').classList.toggle('hidden', type !== 'FILE');
+            document.getElementById('bgmPanelYoutube').classList.toggle('hidden', type !== 'YOUTUBE');
+
+            const bgmStatus = document.getElementById('bgmStatus');
+            if (type === 'NONE') bgmStatus.textContent = "BGM: 已關閉 (靜音)";
+            else if (type === 'SYNTH') bgmStatus.textContent = "BGM: EVA 內建節奏";
+            else if (type === 'FILE') bgmStatus.textContent = bgmAudio.src ? "BGM: 本機 MP3" : "BGM: 未選擇檔案";
+            else if (type === 'YOUTUBE') bgmStatus.textContent = loadedYtVideoId ? "BGM: YouTube 音訊" : "BGM: 未載入網址";
+        }
+
+        function switchAlarmSource(type) {
+            alarmSourceType = type;
+            stopAlarmSound();
+
+            document.getElementById('alarmPanelSynth').classList.toggle('hidden', type !== 'SYNTH');
+            document.getElementById('alarmPanelFile').classList.toggle('hidden', type !== 'FILE');
+            document.getElementById('alarmPanelYoutube').classList.toggle('hidden', type !== 'YOUTUBE');
+        }
+
+        function loadYoutubeUrl(target = 'BGM') {
+            const isBgm = target === 'BGM';
+            const inputEl = document.getElementById(isBgm ? 'ytUrlInput' : 'ytAlarmUrlInput');
+            const statusEl = document.getElementById(isBgm ? 'ytStatus' : 'ytAlarmStatus');
+            const url = inputEl.value.trim();
+
+            if (!url) {
+                statusEl.textContent = "請輸入有效的 YouTube 網址！";
+                statusEl.className = "text-[11px] text-red-400 block truncate";
+                return;
+            }
+
+            // Extract YouTube Video ID
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+
+            if (match && match[2].length === 11) {
+                const videoId = match[2];
+                if (isBgm) {
+                    loadedYtVideoId = videoId;
+                    if (isYtReady && ytPlayer) ytPlayer.cueVideoById(loadedYtVideoId);
+                    statusEl.textContent = `已成功載入 ID: ${loadedYtVideoId}`;
+                    statusEl.className = "text-[11px] text-green-400 block truncate";
+                    const bgmStatus = document.getElementById('bgmStatus');
+                    if (bgmStatus) bgmStatus.textContent = "BGM: YouTube 就緒";
+                } else {
+                    loadedYtAlarmVideoId = videoId;
+                    if (isYtAlarmReady && ytAlarmPlayer) ytAlarmPlayer.cueVideoById(loadedYtAlarmVideoId);
+                    statusEl.textContent = `已成功載入警報 ID: ${loadedYtAlarmVideoId}`;
+                    statusEl.className = "text-[11px] text-green-400 block truncate";
+                }
+            } else {
+                statusEl.textContent = "無法解析該 YouTube 網址，請再試一次。";
+                statusEl.className = "text-[11px] text-red-400 block truncate";
+            }
+        }
+
+        // --- WEB AUDIO SYNTHESIZER FOR EVA BATTLE BEAT ---
+        function startSynthBgm() {
+            initAudioContext();
+            stopSynthBgm();
+            synthStep = 0;
+
+            const tempoMs = 125; 
+            synthInterval = setInterval(() => {
+                if (!audioCtx) return;
+                const t = audioCtx.currentTime;
+
+                if (synthStep % 2 === 0) playSynthTone(120, 'triangle', t, 0.08, bgmVolume * 0.4);
+                if (synthStep % 4 === 2) playSynthTone(240, 'square', t, 0.05, bgmVolume * 0.2);
+                
+                if (synthStep % 8 === 0 || synthStep % 8 === 3 || synthStep % 8 === 6) {
+                    playSynthTone(587.33, 'sawtooth', t, 0.1, bgmVolume * 0.15);
+                } else if (synthStep % 8 === 1 || synthStep % 8 === 4) {
+                    playSynthTone(659.25, 'sawtooth', t, 0.1, bgmVolume * 0.15);
+                }
+
+                synthStep = (synthStep + 1) % 16;
+            }, tempoMs);
+
+            isBgmPlaying = true;
+            updateBgmStatusUI(true, "EVA 內建節奏");
+        }
+
+        function stopSynthBgm() {
+            if (synthInterval) {
+                clearInterval(synthInterval);
+                synthInterval = null;
+            }
+        }
+
+        function playSynthTone(freq, type, startTime, duration, vol) {
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startTime);
+                gain.gain.setValueAtTime(vol, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            } catch(e){}
+        }
+
+        function playBeepSound(freq = 880, duration = 0.1) {
+            const chkSoundFx = document.getElementById('chkSoundFx');
+            if (!chkSoundFx || !chkSoundFx.checked) return;
+            initAudioContext();
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function playAlarmSound() {
+            const chkSoundFx = document.getElementById('chkSoundFx');
+            if (!chkSoundFx || !chkSoundFx.checked) return;
+
+            stopAllBGM();
+
+            if (alarmSourceType === 'YOUTUBE') {
+                if (loadedYtAlarmVideoId && isYtAlarmReady && ytAlarmPlayer) {
+                    ytAlarmPlayer.setVolume(bgmVolume * 100);
+                    ytAlarmPlayer.seekTo(0);
+                    ytAlarmPlayer.playVideo();
+                } else {
+                    alert('警報 YouTube 音訊尚未載入！');
+                }
+            } else if (alarmSourceType === 'FILE') {
+                if (alarmAudio && alarmAudio.src && alarmAudio.src !== window.location.href) {
+                    alarmAudio.currentTime = 0;
+                    alarmAudio.volume = bgmVolume;
+                    alarmAudio.play().catch(e => console.log(e));
+                } else {
+                    alert('尚未選擇上傳警報 MP3 檔案！');
+                }
+            } else { // SYNTH
+                initAudioContext();
+                try {
+                    for (let i = 0; i < 4; i++) {
+                        setTimeout(() => { playBeepSound(1200, 0.25); }, i * 250);
+                    }
+                } catch (e) { console.error(e); }
+            }
+        }
+
+        function stopAlarmSound() {
+            if (alarmAudio) {
+                alarmAudio.pause();
+                alarmAudio.currentTime = 0;
+            }
+            if (isYtAlarmReady && ytAlarmPlayer && ytAlarmPlayer.pauseVideo) {
+                ytAlarmPlayer.pauseVideo();
+            }
+            stopAlarmTest();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const objectUrl = URL.createObjectURL(file);
+            bgmAudio.src = objectUrl;
+            bgmAudio.volume = bgmVolume;
+            
+            const fileNameSpan = document.getElementById('bgmFileName');
+            if (fileNameSpan) {
+                fileNameSpan.innerHTML = `<i class="fa-solid fa-file-audio text-yellow-400 mr-1"></i>${file.name}`;
+            }
+
+            if (bgmSourceType === 'FILE') {
+                playBGM();
+            }
+        }
+
+        function handleAlarmUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const objectUrl = URL.createObjectURL(file);
+            alarmAudio.src = objectUrl;
+            alarmAudio.loop = false;
+            alarmAudio.volume = bgmVolume;
+            alarmAudio.currentTime = 0;
+
+            const alarmNameSpan = document.getElementById('alarmFileName');
+            if (alarmNameSpan) {
+                alarmNameSpan.innerHTML = `<i class="fa-solid fa-file-audio text-red-400 mr-1"></i>${file.name}`;
+            }
+            
+            if (isAlarmTesting) {
+                stopAlarmTest();
+            }
+        }
+
+        function toggleAlarmTest() {
+            initAudioContext();
+
+            if (isAlarmTesting) {
+                stopAlarmTest();
+            } else {
+                stopAllBGM();
+
+                if (alarmSourceType === 'YOUTUBE') {
+                    if (loadedYtAlarmVideoId && isYtAlarmReady && ytAlarmPlayer) {
+                        ytAlarmPlayer.setVolume(bgmVolume * 100);
+                        ytAlarmPlayer.seekTo(0);
+                        ytAlarmPlayer.playVideo();
+                        isAlarmTesting = true;
+                        updateAlarmTestUI(true);
+                    } else {
+                        alert('請先輸入並載入有效的警報 YouTube 網址！');
+                    }
+                } else if (alarmSourceType === 'FILE') {
+                    if (alarmAudio.src && alarmAudio.src !== window.location.href) {
+                        alarmAudio.currentTime = 0;
+                        alarmAudio.volume = bgmVolume;
+                        alarmAudio.play().then(() => {
+                            isAlarmTesting = true;
+                            updateAlarmTestUI(true);
+                        }).catch(e => console.log(e));
+                    } else {
+                        alert('請先選擇上傳警報 MP3 檔案！');
+                    }
+                } else { // SYNTH
+                    isAlarmTesting = true;
+                    updateAlarmTestUI(true);
+                    playBeepSound(1200, 0.25);
+                    setTimeout(() => { playBeepSound(1200, 0.25); }, 300);
+                    setTimeout(() => {
+                        isAlarmTesting = false;
+                        updateAlarmTestUI(false);
+                    }, 600);
+                }
+            }
+        }
+
+        function stopAlarmTest() {
+            if (alarmAudio) {
+                alarmAudio.pause();
+                alarmAudio.currentTime = 0;
+            }
+            if (isYtAlarmReady && ytAlarmPlayer && ytAlarmPlayer.pauseVideo) {
+                ytAlarmPlayer.pauseVideo();
+            }
+            isAlarmTesting = false;
+            updateAlarmTestUI(false);
+        }
+
+        function updateAlarmTestUI(testing) {
+            const btn = document.getElementById('btnTestAlarm');
+            if (!btn) return;
+            if (testing) {
+                btn.innerHTML = '<i class="fa-solid fa-square"></i> 停止試聽';
+                btn.className = "px-3 py-1 bg-red-600 hover:bg-red-500 border border-red-400 text-white font-bold text-xs rounded shrink-0 transition-all flex items-center gap-1 animate-pulse";
+            } else {
+                btn.innerHTML = '<i class="fa-solid fa-bell"></i> 試聽警報';
+                btn.className = "px-3 py-1 bg-red-900/80 hover:bg-red-800 border border-red-500 text-red-200 font-bold text-xs rounded shrink-0 transition-all flex items-center gap-1";
+            }
+        }
+
+        window.toggleAlarmTest = toggleAlarmTest;
+
+        function playBGM() {
+            initAudioContext();
+            if (bgmSourceType === 'NONE') return;
+
+            if (bgmSourceType === 'SYNTH') {
+                startSynthBgm();
+            } else if (bgmSourceType === 'FILE') {
+                if (!bgmAudio.src || bgmAudio.src === window.location.href) {
+                    alert('請先選擇上傳 BGM MP3 檔案！');
+                    return;
+                }
+                bgmAudio.volume = bgmVolume;
+                bgmAudio.play().then(() => {
+                    isBgmPlaying = true;
+                    updateBgmStatusUI(true, "本機 MP3");
+                }).catch(e => console.log(e));
+            } else if (bgmSourceType === 'YOUTUBE') {
+                if (!loadedYtVideoId) {
+                    alert('請先輸入並載入有效的 BGM YouTube 網址！');
+                    return;
+                }
+                if (isYtReady && ytPlayer) {
+                    ytPlayer.setVolume(bgmVolume * 100);
+                    ytPlayer.playVideo();
+                    isBgmPlaying = true;
+                    updateBgmStatusUI(true, "YouTube 音訊");
+                }
+            }
+        }
+
+        function stopAllBGM() {
+            stopSynthBgm();
+            if (bgmAudio) bgmAudio.pause();
+            if (isYtReady && ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+            isBgmPlaying = false;
+            updateBgmStatusUI(false);
+        }
+
+        function resetBGM() {
+            stopAllBGM();
+            synthStep = 0;
+            if (bgmAudio) {
+                try { bgmAudio.currentTime = 0; } catch(e) {}
+            }
+            if (isYtReady && ytPlayer) {
+                try {
+                    if (ytPlayer.seekTo) ytPlayer.seekTo(0, true);
+                    if (ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+                } catch(e) {}
+            }
+        }
+
+        function toggleBGMPlay() {
+            if (isBgmPlaying) stopAllBGM();
+            else playBGM();
+        }
+
+        function adjustVolume(val) {
+            bgmVolume = parseFloat(val);
+            if (bgmAudio) bgmAudio.volume = bgmVolume;
+            if (alarmAudio) alarmAudio.volume = bgmVolume;
+            if (isYtReady && ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(bgmVolume * 100);
+            if (isYtAlarmReady && ytAlarmPlayer && ytAlarmPlayer.setVolume) ytAlarmPlayer.setVolume(bgmVolume * 100);
+        }
+
+        function updateBgmStatusUI(playing, customText) {
+            const bgmStatus = document.getElementById('bgmStatus');
+            const bgmIcon = document.getElementById('bgmIcon');
+            const btnPlayBgm = document.getElementById('btnPlayBgm');
+
+            if (customText) bgmStatus.textContent = `BGM: ${customText}`;
+
+            if (playing) {
+                if (bgmIcon) bgmIcon.className = "fa-solid fa-compact-disc text-green-400 animate-spin text-xs";
+                if (btnPlayBgm) btnPlayBgm.innerHTML = '<i class="fa-solid fa-pause"></i> 暫停 BGM';
+            } else {
+                if (bgmIcon) bgmIcon.className = "fa-solid fa-music text-yellow-400 text-xs";
+                if (btnPlayBgm) btnPlayBgm.innerHTML = '<i class="fa-solid fa-play"></i> 測試播放 BGM';
+            }
+        }
+
+        function switchAppMode(mode) {
+            initAudioContext();
+            appMode = mode;
+            const btnClock = document.getElementById('btnModeClock');
+            const btnTimer = document.getElementById('btnModeTimer');
+            const labelJp = document.getElementById('labelJapanese');
+            const labelEn = document.getElementById('labelEnglish');
+            const kanjiAt = document.getElementById('kanjiAt');
+            const statusLabel = document.getElementById('statusLabel');
+            const speedControlsRow = document.getElementById('speedControlsRow');
+
+            if (mode === 'CLOCK') {
+                btnClock.className = "px-2 sm:px-3 py-0.5 sm:py-1 text-[11px] sm:text-xs font-black rounded transition-all bg-yellow-400 text-black shadow-md whitespace-nowrap";
+                btnTimer.className = "px-2 sm:px-3 py-0.5 sm:py-1 text-[11px] sm:text-xs font-black rounded transition-all text-yellow-400 hover:bg-yellow-500/20 whitespace-nowrap";
+                
+                labelJp.textContent = "現在時刻";
+                labelEn.textContent = "SYSTEM REAL-TIME CLOCK";
+                kanjiAt.textContent = "現在";
+                statusLabel.textContent = "CLOCK ONLINE";
+                statusLabel.className = "text-yellow-400 font-bold";
+
+                if (speedControlsRow) speedControlsRow.style.opacity = "0.4";
+
+                if (isRunning) pauseTimer();
+                startClock();
+            } else {
+                btnTimer.className = "px-2 sm:px-3 py-0.5 sm:py-1 text-[11px] sm:text-xs font-black rounded transition-all bg-yellow-400 text-black shadow-md whitespace-nowrap";
+                btnClock.className = "px-2 sm:px-3 py-0.5 sm:py-1 text-[11px] sm:text-xs font-black rounded transition-all text-yellow-400 hover:bg-yellow-500/20 whitespace-nowrap";
+
+                labelJp.textContent = "活動限界まで";
+                labelEn.textContent = "ACTIVE TIME REMAINING";
+                kanjiAt.textContent = "あと";
+                statusLabel.textContent = "TIMER STANDBY";
+                statusLabel.className = "text-yellow-400 font-bold";
+
+                if (speedControlsRow) speedControlsRow.style.opacity = "1.0";
+
+                stopClock();
+                updateDisplay();
+            }
+        }
+
+        // --- CLOCK MODE LOGIC ---
+        function startClock() {
+            stopClock();
+            updateClockDisplay();
+            clockInterval = setInterval(updateClockDisplay, 10);
+        }
+
+        function stopClock() {
+            if (clockInterval) {
+                clearInterval(clockInterval);
+                clockInterval = null;
+            }
+        }
+
+        function updateClockDisplay() {
+            if (appMode !== 'CLOCK') return;
+
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const centiseconds = String(Math.floor(now.getMilliseconds() / 10)).padStart(2, '0');
+
+            const displayEl = document.getElementById('timerDisplay');
+            displayEl.textContent = `${hours}:${minutes}:${seconds}:${centiseconds}`;
+
+            displayEl.style.color = 'rgb(255, 230, 0)';
+            displayEl.style.textShadow = '0 0 12px rgba(255, 230, 0, 0.6), 0 0 25px rgba(255, 230, 0, 0.3)';
+
+            const kanjiAt = document.getElementById('kanjiAt');
+            if (kanjiAt) {
+                kanjiAt.style.color = 'rgb(255, 230, 0)';
+                kanjiAt.style.borderColor = 'rgb(255, 230, 0)';
+            }
+
+            const outerFrame = document.getElementById('outerFrame');
+            if (outerFrame) {
+                outerFrame.style.borderColor = 'rgb(255, 230, 0)';
+                outerFrame.style.boxShadow = '0 0 20px rgba(255, 230, 0, 0.4)';
+            }
+
+            const topBarRedOverlay = document.getElementById('topBarRedOverlay');
+            if (topBarRedOverlay) topBarRedOverlay.style.opacity = '0';
+            displayEl.classList.remove('critical-flash');
+        }
+
+        function updateDisplay() {
+            if (appMode === 'CLOCK') {
+                updateClockDisplay();
+                return;
+            }
+
+            const displayEl = document.getElementById('timerDisplay');
+            
+            const totalSecs = Math.floor(remainingCentiseconds / 100);
+            const minutes = Math.floor(totalSecs / 60);
+            const seconds = totalSecs % 60;
+            const centiseconds = Math.floor(remainingCentiseconds % 100);
+
+            const mmStr = String(minutes).padStart(2, '0');
+            const ssStr = String(seconds).padStart(2, '0');
+            const ccStr = String(centiseconds).padStart(2, '0');
+
+            displayEl.textContent = `${mmStr}:${ssStr}:${ccStr}`;
+
+            const ratio = totalCentiseconds > 0 ? Math.max(0, Math.min(1, remainingCentiseconds / totalCentiseconds)) : 0;
+            const gVal = Math.round(17 + (230 - 17) * ratio);
+            const currentColor = `rgb(255, ${gVal}, 0)`;
+            const glowColor = `rgba(255, ${gVal}, 0, 0.6)`;
+            const deepGlowColor = `rgba(255, ${gVal}, 0, 0.3)`;
+
+            displayEl.style.color = currentColor;
+            displayEl.style.textShadow = `0 0 12px ${glowColor}, 0 0 25px ${deepGlowColor}`;
+
+            const kanjiAt = document.getElementById('kanjiAt');
+            if (kanjiAt) {
+                kanjiAt.style.color = currentColor;
+                kanjiAt.style.borderColor = currentColor;
+            }
+
+            const outerFrame = document.getElementById('outerFrame');
+            if (outerFrame) {
+                outerFrame.style.borderColor = currentColor;
+                outerFrame.style.boxShadow = `0 0 20px rgba(255, ${gVal}, 0, 0.4)`;
+            }
+
+            const topBarRedOverlay = document.getElementById('topBarRedOverlay');
+            if (topBarRedOverlay) {
+                topBarRedOverlay.style.opacity = (1 - ratio).toFixed(3);
+            }
+
+            if (ratio < 0.10 && isRunning) {
+                displayEl.classList.add('critical-flash');
+            } else {
+                displayEl.classList.remove('critical-flash');
+            }
+        }
+
+        function startTimer() {
+            if (appMode === 'CLOCK') switchAppMode('TIMER');
+
+            initAudioContext();
+            if (remainingCentiseconds <= 0) return;
+
+            if (!isRunning) {
+                isRunning = true;
+                const statusLabel = document.getElementById('statusLabel');
+                statusLabel.textContent = "ACTIVE COUNTDOWN";
+                statusLabel.className = "text-red-500 font-black animate-pulse";
+
+                const chkAutoBgm = document.getElementById('chkAutoBgm');
+                if (chkAutoBgm && chkAutoBgm.checked && !isBgmPlaying) {
+                    playBGM();
+                }
+
+                playBeepSound(1000, 0.15);
+
+                timerInterval = setInterval(() => {
+                    if (externalPower) return; 
+
+                    if (speedMultiplier > 0) {
+                        remainingCentiseconds -= (1 * speedMultiplier);
+                    }
+
+                    if (remainingCentiseconds <= 0) {
+                        remainingCentiseconds = 0;
+                        updateDisplay();
+                        timerFinished();
+                    } else {
+                        updateDisplay();
+                    }
+                }, 10);
+            }
+        }
+
+        function pauseTimer() {
+            if (isRunning) {
+                isRunning = false;
+                clearInterval(timerInterval);
+                timerInterval = null;
+                const statusLabel = document.getElementById('statusLabel');
+                statusLabel.textContent = "PAUSED";
+                statusLabel.className = "text-yellow-400 font-bold";
+                stopAllBGM();
+                stopAlarmSound();
+                playBeepSound(600, 0.1);
+            }
+        }
+
+        function resetTimer() {
+            pauseTimer();
+            resetBGM();
+            stopAlarmSound();
+            remainingCentiseconds = totalCentiseconds;
+            const statusLabel = document.getElementById('statusLabel');
+            statusLabel.textContent = "TIMER STANDBY";
+            statusLabel.className = "text-yellow-400 font-bold";
+            updateDisplay();
+            playBeepSound(440, 0.1);
+        }
+
+        function timerFinished() {
+            pauseTimer();
+            playAlarmSound();
+            const statusLabel = document.getElementById('statusLabel');
+            statusLabel.textContent = "ACTIVE TIME EXPIRED";
+            statusLabel.className = "text-red-600 font-black critical-flash";
+        }
+
+        function setSpeedMode(mode) {
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active-mode'));
+            const activeBtn = document.getElementById(`btn-${mode}`);
+            if (activeBtn) activeBtn.classList.add('active-mode');
+
+            if (mode === 'STOP') speedMultiplier = 0;
+            else if (mode === 'SLOW') speedMultiplier = 0.5;
+            else if (mode === 'NORMAL') speedMultiplier = 1;
+            else if (mode === 'RACING') speedMultiplier = 3;
+
+            playBeepSound(800, 0.05);
+        }
+
+        function togglePowerSupply() {
+            externalPower = !externalPower;
+            const panelInternal = document.getElementById('panelInternal');
+            const panelExternal = document.getElementById('panelExternal');
+            const powerStatusText = document.getElementById('powerStatusText');
+            const powerStatusDot = document.getElementById('powerStatusDot');
+            const powerModeBtnText = document.getElementById('powerModeBtnText');
+
+            if (externalPower) {
+                panelInternal.className = "eva-panel panel-box-height p-1.5 sm:p-3 rounded flex justify-between items-center relative overflow-hidden h-16 sm:h-24 lg:h-28 border-2 border-yellow-500/40 opacity-50 transition-all";
+                panelExternal.className = "eva-panel panel-box-height active-power-external p-1.5 sm:p-3 rounded flex justify-between items-center relative overflow-hidden h-16 sm:h-24 lg:h-28 border-2 border-green-500 transition-all";
+                powerStatusText.textContent = "ONLINE";
+                powerStatusText.className = "text-[8px] sm:text-xs font-mono text-green-400 font-bold";
+                powerStatusDot.className = "w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-green-400 animate-ping";
+                powerModeBtnText.textContent = "內部電池";
+            } else {
+                panelInternal.className = "eva-panel panel-box-height active-power-internal p-1.5 sm:p-3 rounded flex justify-between items-center relative overflow-hidden h-16 sm:h-24 lg:h-28 border-2 border-red-600 transition-all";
+                panelExternal.className = "eva-panel panel-box-height p-1.5 sm:p-3 rounded flex justify-between items-center relative overflow-hidden h-16 sm:h-24 lg:h-28 border-2 border-yellow-500/40 opacity-50 transition-all";
+                powerStatusText.textContent = "OFFLINE";
+                powerStatusText.className = "text-[8px] sm:text-xs font-mono text-red-500 font-bold";
+                powerStatusDot.className = "w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-red-600 animate-pulse";
+                powerModeBtnText.textContent = "外部電源";
+            }
+            playBeepSound(950, 0.1);
+        }
+
+        function toggleIPhoneModal() {
+            const modal = document.getElementById('iphoneGuideModal');
+            modal.classList.toggle('hidden');
+            playBeepSound(750, 0.05);
+        }
+
+        function toggleSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.toggle('hidden');
+            playBeepSound(750, 0.05);
+        }
+
+        function toggleBottomControls() {
+            const row = document.getElementById('bottomControlRow');
+            const btn = document.getElementById('btnToggleControls');
+            const chk = document.getElementById('chkShowControls');
+            if (!row) return;
+
+            const isCurrentlyHidden = row.classList.contains('hidden');
+            
+            if (isCurrentlyHidden) {
+                row.classList.remove('hidden');
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> <span class="hidden sm:inline">隱藏列</span>';
+                if (chk) chk.checked = true;
+            } else {
+                row.classList.add('hidden');
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-eye"></i> <span class="hidden sm:inline">顯示列</span>';
+                if (chk) chk.checked = false;
+            }
+            playBeepSound(750, 0.05);
+        }
+
+        function quickSetTime(mins) {
+            document.getElementById('inputMinutes').value = mins;
+        }
+
+        function saveAndCloseSettings() {
+            const inputMins = parseInt(document.getElementById('inputMinutes').value) || 5;
+            totalCentiseconds = Math.max(1, inputMins) * 60 * 100;
+            resetTimer();
+            toggleSettingsModal();
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            switchAppMode('CLOCK'); 
+
+            if (alarmAudio) {
+                alarmAudio.addEventListener('ended', () => {
+                    if (isAlarmTesting) {
+                        isAlarmTesting = false;
+                        updateAlarmTestUI(false);
+                    }
+                });
+            }
+
+            document.body.addEventListener('click', function unlockAudio() {
+                initAudioContext();
+                document.body.removeEventListener('click', unlockAudio);
+            }, { once: true });
+        };
+    </script>
+</body>
+</html>
